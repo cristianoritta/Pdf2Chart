@@ -1,0 +1,7 @@
+output/
+.env
+credenciais.json
+venv/
+__pycache__/
+*.anx
+*.pyc

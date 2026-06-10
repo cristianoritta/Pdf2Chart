@@ -1,0 +1,6 @@
+AliasAnx>=0.1.2
+flask>=3.1.0
+flaskwebgui>=1.1.7,<1.1.8
+PyPDF2>=3.0.0
+groq>=1.4.0
+python-dotenv>=1.0.0

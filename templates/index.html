@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF2Chart — Análise de Vínculos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/canvas.css') }}">
+</head>
+<body>
+  <div id="app">
+    <!-- Drop zone (tela inteira) -->
+    <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Arraste um PDF ou clique para selecionar">
+      <input type="file" id="file-input" accept=".pdf,application/pdf" hidden>
+
+      <div class="corner-actions">
+        <button id="btn-help" class="corner-btn" type="button" aria-label="Ajuda" title="Ajuda">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M9.5 9.5a2.5 2.5 0 1 1 4.2 1.8c-.8.6-1.2 1.2-1.2 2.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="12" cy="17" r="1" fill="currentColor"/>
+          </svg>
+        </button>
+        <button id="btn-settings" class="corner-btn" type="button" aria-label="Configurações" title="Configurações">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="dropzone-content">
+        <div class="dropzone-icon" aria-hidden="true">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="32" fill="#E8F0FE"/>
+            <path d="M32 20v16M24 28l8-8 8 8" stroke="#1A73E8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M22 40h20" stroke="#1A73E8" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <h1>PDF2Chart</h1>
+        <p class="subtitle">Arraste um PDF aqui ou clique para selecionar</p>
+        <p class="hint">Extração de texto · IA Groq · Gráfico de vínculos Alias ANX</p>
+      </div>
+    </div>
+
+    <!-- Overlay de processamento -->
+    <div id="processing" class="overlay hidden" aria-live="polite">
+      <div class="overlay-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <h2 id="processing-title">Processando PDF...</h2>
+        <p id="processing-step">Extraindo texto do documento</p>
+      </div>
+    </div>
+
+    <!-- Resultados -->
+    <div id="results" class="results hidden">
+      <header class="results-header">
+        <div class="results-title">
+          <h1>Análise concluída</h1>
+          <p id="filename" class="filename"></p>
+        </div>
+        <div class="results-actions">
+          <button id="btn-new" class="btn btn-secondary" type="button">Novo PDF</button>
+          <button id="btn-view-graph" class="btn btn-secondary" type="button">Ver gráfico</button>
+          <a id="btn-download" class="btn btn-primary" href="#" download>Download .ANX</a>
+        </div>
+      </header>
+
+      <div class="stats">
+        <div class="stat-card">
+          <span class="stat-value" id="stat-entities">0</span>
+          <span class="stat-label">Entidades</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stat-relationships">0</span>
+          <span class="stat-label">Vínculos</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stat-chars">0</span>
+          <span class="stat-label">Caracteres extraídos</span>
+        </div>
+      </div>
+
+      <div class="panels">
+        <section class="panel">
+          <h2>Entidades</h2>
+          <div id="entities-list" class="entity-list"></div>
+        </section>
+        <section class="panel">
+          <h2>Vínculos</h2>
+          <div id="relationships-list" class="relationship-list"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Ajuda -->
+    <div id="help-modal" class="modal hidden" role="dialog" aria-labelledby="help-title" aria-modal="true">
+      <div class="modal-backdrop" data-close-help></div>
+      <div class="modal-card modal-card-help">
+        <header class="modal-header">
+          <h2 id="help-title">Ajuda · PDF2Chart</h2>
+          <button id="btn-close-help" class="modal-close" type="button" aria-label="Fechar">&times;</button>
+        </header>
+        <div class="help-content">
+          <section>
+            <h3>O que é o PDF2Chart?</h3>
+            <p>O PDF2Chart extrai o texto de documentos PDF, utiliza inteligência artificial (Groq) para identificar <strong>entidades</strong> e <strong>vínculos</strong> entre elas, e gera um gráfico de análise compatível com o formato Alias ANX (IBM i2 Analyst's Notebook).</p>
+          </section>
+          <section>
+            <h3>Como usar</h3>
+            <ol>
+              <li>Configure sua API Key Groq no ícone de <strong>engrenagem</strong> (canto inferior direito).</li>
+              <li>Arraste um PDF para a tela ou clique para selecionar o arquivo.</li>
+              <li>Aguarde a extração do texto e a análise pela IA.</li>
+              <li>Revise entidades e vínculos na tela de resultados.</li>
+              <li>Use <strong>Ver gráfico</strong> para explorar o mapa interativo de vínculos.</li>
+              <li>Baixe o arquivo <strong>.ANX</strong> para importar no i2 Analyst's Notebook.</li>
+            </ol>
+          </section>
+          <section>
+            <h3>No canvas de vínculos</h3>
+            <p>Shift+clique para seleção múltipla · Del para apagar · Pin para fixar cards · Salvar/Importar JSON · Copiar estrutura em Markdown.</p>
+          </section>
+          <section class="help-credits">
+            <h3>Desenvolvedor</h3>
+            <p class="help-dev-name">Cristiano Ribeiro Ritta</p>
+            <ul>
+              <li>Site: <a href="https://www.cristianoritta.com.br" target="_blank" rel="noopener">www.cristianoritta.com.br</a></li>
+              <li>E-mail: <a href="mailto:cristiano-ritta@pc.rs.gov.br">cristiano-ritta@pc.rs.gov.br</a></li>
+              <li>Telefone: <a href="tel:+5553999270103">(53) 99927-0103</a></li>
+            </ul>
+          </section>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary" data-close-help>Fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Configurações -->
+    <div id="settings-modal" class="modal hidden" role="dialog" aria-labelledby="settings-title" aria-modal="true">
+      <div class="modal-backdrop" data-close-settings></div>
+      <div class="modal-card">
+        <header class="modal-header">
+          <h2 id="settings-title">Configurações</h2>
+          <button id="btn-close-settings" class="modal-close" type="button" aria-label="Fechar">&times;</button>
+        </header>
+        <form id="settings-form" class="settings-form">
+          <div class="form-group">
+            <label for="groq-api-key">API Key Groq</label>
+            <input type="password" id="groq-api-key" name="groq_api_key" placeholder="gsk_..." autocomplete="off" required>
+            <p class="form-hint">Obtenha em <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a></p>
+          </div>
+          <div class="form-group">
+            <label for="groq-model">Modelo</label>
+            <input type="text" id="groq-model" name="groq_model" placeholder="llama-3.3-70b-versatile" required>
+          </div>
+          <p id="settings-status" class="settings-status hidden"></p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close-settings>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Canvas de vínculos -->
+    <div id="graph-view" class="graph-view hidden">
+      <header class="graph-topbar">
+        <div class="graph-brand">
+          <h2>PDF2Chart · Gráfico de Vínculos</h2>
+          <p id="graph-filename">—</p>
+        </div>
+        <div class="graph-status">
+          <span id="graph-node-count">0 entidades</span>
+          <span id="graph-edge-count">0 vínculos</span>
+        </div>
+        <div class="graph-toolbar">
+          <button id="btn-add-card" class="btn btn-secondary" type="button">+ Card</button>
+          <button id="btn-link-cards" class="btn btn-secondary" type="button" disabled>Ligar cards</button>
+          <button id="btn-save-graph" class="btn btn-secondary" type="button">Salvar</button>
+          <button id="btn-import-graph" class="btn btn-secondary" type="button">Importar</button>
+          <button id="btn-copy-md" class="btn btn-secondary" type="button">Copiar md</button>
+          <input type="file" id="inp-import-graph" accept=".json,application/json" hidden>
+          <button id="btn-close-graph" class="btn btn-primary" type="button">Voltar</button>
+        </div>
+      </header>
+      <div class="graph-hint" id="graph-hint">Shift+clique seleção múltipla · Del apaga · Pin fixa card · Ctrl+arraste seleciona área</div>
+      <div class="graph-canvas" id="graph-canvas">
+        <div class="graph-world" id="graph-world">
+          <svg class="graph-edges" id="graph-edges"></svg>
+        </div>
+      </div>
+      <div class="graph-controls">
+        <button id="graph-zoom-in" type="button" title="Zoom +">+</button>
+        <button id="graph-zoom-out" type="button" title="Zoom −">−</button>
+        <button id="graph-zoom-fit" type="button" title="Centralizar">⤢</button>
+        <div class="graph-zoomlbl" id="graph-zoomlbl">100%</div>
+      </div>
+      <div class="graph-ctx" id="graph-ctx" role="menu"></div>
+      <div id="graph-selection-box" class="graph-selection-box"></div>
+      <div id="graph-toast" class="graph-toast hidden" role="status">Copiado</div>
+    </div>
+
+    <!-- Modal: Card -->
+    <div id="card-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-card-modal></div>
+      <div class="modal-card">
+        <header class="modal-header">
+          <h2 id="card-modal-title">Novo card</h2>
+          <button class="modal-close" type="button" data-close-card-modal aria-label="Fechar">&times;</button>
+        </header>
+        <form id="card-form" class="settings-form canvas-form-grid">
+          <div class="form-group">
+            <label for="card-title">Título</label>
+            <input type="text" id="card-title" required>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="card-type-label">Tipo (rótulo)</label>
+              <input type="text" id="card-type-label" placeholder="Person">
+            </div>
+            <div class="form-group">
+              <label for="card-color">Cor</label>
+              <input type="color" id="card-color" value="#1a73e8">
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="card-prop-key">Campo</label>
+              <input type="text" id="card-prop-key" placeholder="Descrição">
+            </div>
+            <div class="form-group">
+              <label for="card-prop-val">Valor</label>
+              <input type="text" id="card-prop-val">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Ícone</label>
+            <div class="icon-picker" id="icon-picker"></div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close-card-modal>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modal: Vínculo -->
+    <div id="edge-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop" data-close-edge-modal></div>
+      <div class="modal-card">
+        <header class="modal-header">
+          <h2 id="edge-modal-title">Novo vínculo</h2>
+          <button class="modal-close" type="button" data-close-edge-modal aria-label="Fechar">&times;</button>
+        </header>
+        <form id="edge-form" class="settings-form canvas-form-grid">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="edge-source">Origem</label>
+              <select id="edge-source"></select>
+            </div>
+            <div class="form-group">
+              <label for="edge-target">Destino</label>
+              <select id="edge-target"></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="edge-label">Rótulo do vínculo</label>
+            <input type="text" id="edge-label" placeholder="Ex: Pai, Trabalha em..." required>
+          </div>
+          <div class="form-group">
+            <label for="edge-desc">Descrição (opcional)</label>
+            <input type="text" id="edge-desc">
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close-edge-modal>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar vínculo</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Erro -->
+    <div id="error" class="overlay hidden" role="alert">
+      <div class="overlay-card error-card">
+        <div class="error-icon" aria-hidden="true">!</div>
+        <h2>Erro no processamento</h2>
+        <p id="error-message"></p>
+        <button id="btn-retry" class="btn btn-primary" type="button">Tentar novamente</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/canvas.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
