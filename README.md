@@ -1,0 +1,1 @@
+O PDF2Chart extrai o texto de documentos PDF, utiliza inteligência artificial (Groq) para identificar <strong>entidades</strong> e <strong>vínculos</strong> entre elas, e gera um gráfico de análise compatível com o formato Alias ANX (IBM i2 Analyst's Notebook).
