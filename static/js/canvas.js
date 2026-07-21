@@ -32,6 +32,7 @@
 
   const NODE_W = 196;
   const NODE_H = 128;
+  const CIRCLE_D = 64;
 
   let nodes = [];
   let edges = [];
@@ -47,9 +48,11 @@
   let ctxTarget = null;
   let editingNodeId = null;
   let editingEdgeIdx = null;
+  let editingImageData = null; // data URL ou null; undefined = sem mudança ao editar
   let nextId = 1;
   let graphFilename = '';
   let toastTimer = null;
+  let networkAnalysis = { results: {} };
 
   const $ = id => document.getElementById(id);
   const canvas = () => $('graph-canvas');
@@ -76,6 +79,23 @@
   function updateCounts() {
     $('graph-node-count').textContent = nodes.length + ' entidades';
     $('graph-edge-count').textContent = edges.length + ' vínculos';
+    nodes.forEach(n => {
+      if ((n.format || 'card') !== 'circle' || !n.el) return;
+      const circle = n.el.querySelector('.g-circle');
+      if (!circle) return;
+      let badge = circle.querySelector('.g-badge');
+      const count = linkCount(n.id);
+      if (count) {
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = 'g-badge';
+          circle.appendChild(badge);
+        }
+        badge.textContent = count;
+      } else if (badge) {
+        badge.remove();
+      }
+    });
   }
 
   function getNode(id) {
@@ -83,7 +103,25 @@
   }
 
   function rectNode(id) {
+    const n = getNode(id);
     const el = nodeEls[id];
+
+    if (n && (n.format || 'card') === 'circle') {
+      const left = el ? el.offsetLeft : n.x;
+      const top = el ? el.offsetTop : n.y;
+      const w = el ? el.offsetWidth : Math.max(CIRCLE_D, 110);
+      const cx = left + w / 2;
+      const cy = top + CIRCLE_D / 2;
+      return {
+        x: cx - CIRCLE_D / 2,
+        y: cy - CIRCLE_D / 2,
+        w: CIRCLE_D,
+        h: CIRCLE_D,
+        cx,
+        cy,
+      };
+    }
+
     if (el) {
       return {
         x: el.offsetLeft, y: el.offsetTop,
@@ -92,9 +130,52 @@
         cy: el.offsetTop + el.offsetHeight / 2,
       };
     }
-    const n = getNode(id);
     if (n) return { x: n.x, y: n.y, w: NODE_W, h: NODE_H, cx: n.x + NODE_W / 2, cy: n.y + NODE_H / 2 };
     return null;
+  }
+
+  function linkCount(nodeId) {
+    return edges.filter(e => e.s === nodeId || e.t === nodeId).length;
+  }
+
+  function initialsFromTitle(title) {
+    return String(title || '?').trim().split(/\s+/).slice(0, 2)
+      .map(p => p[0]?.toUpperCase() || '').join('') || '?';
+  }
+
+  function hasNodeImage(n) {
+    return !!(n && n.image && String(n.image).startsWith('data:image'));
+  }
+
+  function iconSlotHtml(n, forCircle) {
+    if (hasNodeImage(n)) {
+      return `<img class="g-photo" src="${n.image}" alt="" draggable="false">`;
+    }
+    if (forCircle && n.iconType === 'Person') {
+      return `<div class="g-avatar">${esc(initialsFromTitle(n.title))}</div>`;
+    }
+    return `<div class="g-ico">${ICONS[n.iconType] || ICONS.Anon}</div>`;
+  }
+
+  function nodeCardHtml(n) {
+    return `<div class="g-bar"></div>
+      <div class="g-head">${iconSlotHtml(n, false)}
+        <div><div class="g-ttl">${esc(n.title)}</div><div class="g-typ">${esc(n.typeLabel)}</div></div></div>
+      <div class="g-props">${propsHtml(n)}</div>
+      <span class="g-handle l"></span><span class="g-handle r"></span>`;
+  }
+
+  function nodeCircleHtml(n) {
+    const count = linkCount(n.id);
+    return `<div class="g-circle${hasNodeImage(n) ? ' has-photo' : ''}">
+        ${iconSlotHtml(n, true)}
+        ${count ? `<span class="g-badge">${count}</span>` : ''}
+      </div>
+      <div class="g-circle-label">
+        <div class="g-ttl">${esc(n.title)}</div>
+        <div class="g-typ">${esc(n.typeLabel)}</div>
+      </div>
+      <span class="g-handle l"></span><span class="g-handle r"></span>`;
   }
 
   function anchorOnRect(rect, tx2, ty2) {
@@ -148,10 +229,51 @@
       if (!nodeEls[e.s] || !nodeEls[e.t]) return;
       const a = endpoint(e.s, e.t), b = endpoint(e.t, e.s);
       e.path.setAttribute('d', bez(a, b));
+      applyEdgeStyle(e.path, e, {
+        hot: e.path.classList.contains('hot'),
+        sel: e.path.classList.contains('sel'),
+      });
       const m = bezMid(a, b);
       e.lab.style.left = m.x + 'px';
       e.lab.style.top = m.y + 'px';
+      if (e.color) e.lab.style.borderColor = e.color;
     });
+  }
+
+  function normalizeEdge(raw = {}) {
+    const lineStyle = ['solid', 'dashed', 'dotted'].includes(raw.lineStyle)
+      ? raw.lineStyle
+      : 'solid';
+    let width = Number(raw.width);
+    if (!Number.isFinite(width) || width <= 0) width = 1.6;
+    width = Math.min(8, Math.max(0.5, width));
+    return {
+      s: String(raw.s ?? raw.source ?? ''),
+      t: String(raw.t ?? raw.target ?? ''),
+      label: raw.label || 'vínculo',
+      description: raw.description || '',
+      lineStyle,
+      color: raw.color || '#64748b',
+      width,
+    };
+  }
+
+  function edgeDasharray(lineStyle) {
+    if (lineStyle === 'dashed') return '9 7';
+    if (lineStyle === 'dotted') return '2 5';
+    return 'none';
+  }
+
+  function applyEdgeStyle(path, e, opts = {}) {
+    if (!path) return;
+    const width = Number(e.width) || 1.6;
+    const boost = (opts.hot || opts.sel) ? 1.4 : 1;
+    const lineStyle = e.lineStyle || 'solid';
+    path.style.stroke = e.color || '#64748b';
+    path.style.strokeWidth = String(width * boost);
+    path.style.strokeDasharray = edgeDasharray(lineStyle);
+    path.style.strokeLinecap = lineStyle === 'dotted' ? 'round' : 'butt';
+    path.style.fill = 'none';
   }
 
   function highlight(id, on) {
@@ -162,6 +284,10 @@
       e.path.classList.toggle('dim', on && !conn && selectedEdgeIdx === null);
       e.lab.classList.toggle('hot', on && conn);
       e.lab.classList.toggle('dim', on && !conn && selectedEdgeIdx === null);
+      applyEdgeStyle(e.path, e, {
+        hot: on && conn,
+        sel: selectedEdgeIdx === idx,
+      });
     });
     Object.keys(nodeEls).forEach(nid => {
       if (!on) { nodeEls[nid].classList.remove('dim'); return; }
@@ -178,16 +304,55 @@
 
   function refreshNodeEl(n) {
     if (!n.el) return;
+    const wantCircle = (n.format || 'card') === 'circle';
+    const isCircle = n.el.classList.contains('g-node-circle');
+    if (wantCircle !== isCircle) {
+      remountNodeEl(n);
+      return;
+    }
+
     n.el.style.setProperty('--c', n.color);
     const ttl = n.el.querySelector('.g-ttl');
     const typ = n.el.querySelector('.g-typ');
     const ico = n.el.querySelector('.g-ico');
+    const avatar = n.el.querySelector('.g-avatar');
     const props = n.el.querySelector('.g-props');
     if (ttl) ttl.textContent = n.title;
     if (typ) typ.textContent = n.typeLabel;
     if (ico) ico.innerHTML = ICONS[n.iconType] || ICONS.Anon;
+    if (avatar) avatar.textContent = initialsFromTitle(n.title);
     if (props) props.innerHTML = propsHtml(n);
+    if (wantCircle) {
+      const hasPhotoEl = !!n.el.querySelector('.g-photo');
+      if (hasPhotoEl !== hasNodeImage(n)) {
+        remountNodeEl(n);
+        return;
+      }
+      const hasAvatar = !!n.el.querySelector('.g-avatar');
+      const needsAvatar = !hasNodeImage(n) && n.iconType === 'Person';
+      if (hasAvatar !== needsAvatar) {
+        remountNodeEl(n);
+        return;
+      }
+    } else {
+      const hasPhotoEl = !!n.el.querySelector('.g-photo');
+      if (hasPhotoEl !== hasNodeImage(n)) {
+        remountNodeEl(n);
+        return;
+      }
+    }
     updatePinBtn(n);
+  }
+
+  function remountNodeEl(n) {
+    if (n.el) {
+      n.el.remove();
+      delete nodeEls[n.id];
+      n.el = null;
+    }
+    buildNodeEl(n);
+    applySelection();
+    redraw();
   }
 
   function updatePinBtn(n) {
@@ -221,16 +386,13 @@
       refreshNodeEl(n);
       return;
     }
+    const isCircle = (n.format || 'card') === 'circle';
     const el = document.createElement('div');
-    el.className = 'g-node';
+    el.className = isCircle ? 'g-node g-node-circle' : 'g-node';
     el.style.left = n.x + 'px';
     el.style.top = n.y + 'px';
     el.style.setProperty('--c', n.color);
-    el.innerHTML = `<div class="g-bar"></div>
-      <div class="g-head"><div class="g-ico">${ICONS[n.iconType] || ICONS.Anon}</div>
-        <div><div class="g-ttl">${esc(n.title)}</div><div class="g-typ">${esc(n.typeLabel)}</div></div></div>
-      <div class="g-props">${propsHtml(n)}</div>
-      <span class="g-handle l"></span><span class="g-handle r"></span>`;
+    el.innerHTML = isCircle ? nodeCircleHtml(n) : nodeCardHtml(n);
     world().appendChild(el);
     nodeEls[n.id] = el;
     n.el = el;
@@ -249,9 +411,11 @@
   }
 
   function addEdgeEl(e, idx) {
+    const edge = normalizeEdge(e);
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('class', 'graph-edge');
     path.dataset.idx = idx;
+    applyEdgeStyle(path, edge);
     path.addEventListener('click', ev => {
       ev.stopPropagation();
       selectEdge(idx);
@@ -259,8 +423,9 @@
     svg().appendChild(path);
     const lab = document.createElement('div');
     lab.className = 'graph-elabel';
-    lab.textContent = e.label || 'vínculo';
+    lab.textContent = edge.label || 'vínculo';
     lab.dataset.idx = idx;
+    if (edge.color) lab.style.borderColor = edge.color;
     lab.addEventListener('click', ev => {
       ev.stopPropagation();
       selectEdge(idx);
@@ -270,7 +435,7 @@
       openEdgeModal(idx);
     });
     world().appendChild(lab);
-    edgeEls.push({ ...e, path, lab, idx });
+    edgeEls.push({ ...edge, path, lab, idx });
   }
 
   function remountEdges() {
@@ -315,10 +480,15 @@
       updatePinBtn(n);
     });
     edgeEls.forEach((e, idx) => {
-      e.path.classList.toggle('sel', selectedEdgeIdx === idx);
-      e.lab.classList.toggle('sel', selectedEdgeIdx === idx);
+      const sel = selectedEdgeIdx === idx;
+      e.path.classList.toggle('sel', sel);
+      e.lab.classList.toggle('sel', sel);
+      applyEdgeStyle(e.path, e, { sel });
     });
     $('btn-link-cards').disabled = selectedIds.size < 2;
+    if (typeof window.onGraphSelectionChange === 'function') {
+      window.onGraphSelectionChange([...selectedIds]);
+    }
   }
 
   function clearSelection() {
@@ -362,6 +532,24 @@
     setHint(`${ids.size} card(s) selecionado(s) — extremidades do vínculo`);
   }
 
+  function selectSameLabel(n) {
+    const label = String(n.typeLabel || n.iconType || '').trim().toLowerCase();
+    if (!label) {
+      selectOne(n);
+      setHint('Esta entidade não possui rótulo');
+      return;
+    }
+    selectedIds.clear();
+    nodes.forEach(node => {
+      const other = String(node.typeLabel || node.iconType || '').trim().toLowerCase();
+      if (other === label) selectedIds.add(node.id);
+    });
+    selectedEdgeIdx = null;
+    applySelection();
+    const labelDisplay = n.typeLabel || n.iconType || '—';
+    setHint(`${selectedIds.size} selecionado(s) com rótulo "${labelDisplay}"`);
+  }
+
   function removeEdgesForNode(id) {
     const toRemove = edgeEls.map((e, i) => i).filter(i => edges[i].s === id || edges[i].t === id);
     toRemove.sort((a, b) => b - a).forEach(i => removeEdgeAt(i));
@@ -402,6 +590,7 @@
       typeLabel: type,
       iconType: type,
       color: TYPE_COLORS[type] || TYPE_COLORS.Anon,
+      format: 'card',
       props,
       x: cx + radius * Math.cos(angle) - NODE_W / 2,
       y: cy + radius * Math.sin(angle) - NODE_H / 2,
@@ -419,31 +608,48 @@
   }
 
   function serializeNode(n) {
-    return {
+    const out = {
       id: n.id,
       title: n.title,
       typeLabel: n.typeLabel,
       iconType: n.iconType,
       color: n.color,
+      format: n.format === 'circle' ? 'circle' : 'card',
       props: n.props || [],
       x: n.x,
       y: n.y,
       pinned: !!n.pinned,
     };
+    if (hasNodeImage(n)) out.image = n.image;
+    return out;
   }
 
   function nodeFromSerialized(raw) {
-    return {
+    const props = Array.isArray(raw.props)
+      ? raw.props.map(p => {
+          if (Array.isArray(p)) return [String(p[0] ?? ''), String(p[1] ?? '')];
+          if (p && typeof p === 'object') {
+            return [String(p.k ?? p.key ?? ''), String(p.v ?? p.value ?? '')];
+          }
+          return ['Info', String(p)];
+        }).filter(([k]) => k)
+      : [];
+    const node = {
       id: String(raw.id),
       title: raw.title || raw.id,
       typeLabel: raw.typeLabel || raw.type || 'Anon',
       iconType: raw.iconType || raw.typeLabel || 'Anon',
       color: raw.color || TYPE_COLORS[raw.iconType] || TYPE_COLORS.Anon,
-      props: Array.isArray(raw.props) ? raw.props : [],
+      format: raw.format === 'circle' ? 'circle' : 'card',
+      props,
       x: Number(raw.x) || 0,
       y: Number(raw.y) || 0,
       pinned: !!raw.pinned,
     };
+    if (raw.image && String(raw.image).startsWith('data:image')) {
+      node.image = raw.image;
+    }
+    return node;
   }
 
   function exportPayload() {
@@ -454,24 +660,28 @@
       exportedAt: new Date().toISOString(),
       viewport: { tx, ty, scale },
       nodes: nodes.map(serializeNode),
-      edges: edges.map(e => ({
-        s: e.s,
-        t: e.t,
-        label: e.label || 'vínculo',
-        description: e.description || '',
-      })),
+      edges: edges.map(e => {
+        const n = normalizeEdge(e);
+        return {
+          s: n.s,
+          t: n.t,
+          label: n.label,
+          description: n.description,
+          lineStyle: n.lineStyle,
+          color: n.color,
+          width: n.width,
+        };
+      }),
+      networkAnalysis: networkAnalysis && Object.keys(networkAnalysis.results || {}).length
+        ? networkAnalysis
+        : undefined,
     };
   }
 
   function loadGraphState(data, opts = {}) {
     if (data.nodes && Array.isArray(data.nodes)) {
       nodes = data.nodes.map(nodeFromSerialized);
-      edges = (data.edges || []).map(e => ({
-        s: String(e.s),
-        t: String(e.t),
-        label: e.label || 'vínculo',
-        description: e.description || '',
-      }));
+      edges = (data.edges || []).map(normalizeEdge);
       if (data.viewport && !opts.ignoreViewport) {
         tx = data.viewport.tx ?? tx;
         ty = data.viewport.ty ?? ty;
@@ -483,11 +693,14 @@
       const entities = data.entities || [];
       const relationships = data.relationships || [];
       nodes = entities.map((e, i) => entityToNode(e, i, entities.length));
-      edges = relationships.map(r => ({
-        s: String(r.source),
-        t: String(r.target),
-        label: r.label || 'vínculo',
-        description: r.description || '',
+      edges = relationships.map(r => normalizeEdge({
+        s: r.source,
+        t: r.target,
+        label: r.label,
+        description: r.description,
+        lineStyle: r.lineStyle,
+        color: r.color,
+        width: r.width,
       }));
     } else {
       throw new Error('JSON inválido: esperado nodes/edges ou entities/relationships');
@@ -495,9 +708,16 @@
     selectedIds.clear();
     selectedEdgeIdx = null;
     linkSourceId = null;
+    networkAnalysis = data.networkAnalysis && typeof data.networkAnalysis === 'object'
+      ? data.networkAnalysis
+      : { results: {} };
+    if (!networkAnalysis.results) networkAnalysis.results = {};
     mountAll();
     if (data.viewport && !opts.ignoreViewport) applyTransform();
     setHint('Grafo carregado · Shift+clique seleção múltipla · Del apaga');
+    if (typeof window.onNetworkAnalysisLoaded === 'function') {
+      window.onNetworkAnalysisLoaded(networkAnalysis);
+    }
   }
 
   function loadFromAnalysis(data) {
@@ -520,19 +740,24 @@
   }
 
   function importGraphJson(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        loadGraphState(data);
-        const fn = $('graph-filename');
-        if (fn && data.filename) fn.textContent = data.filename;
-        showToast('JSON importado');
-      } catch (err) {
-        setHint('Erro ao importar: ' + err.message);
-      }
-    };
-    reader.readAsText(file);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          loadGraphState(data);
+          const fn = $('graph-filename');
+          if (fn) fn.textContent = data.filename || file.name || 'JSON importado';
+          showToast('JSON importado');
+          resolve(exportPayload());
+        } catch (err) {
+          setHint('Erro ao importar: ' + err.message);
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error('Falha ao ler o arquivo'));
+      reader.readAsText(file);
+    });
   }
 
   function toMarkdown() {
@@ -609,16 +834,64 @@
     return 'C' + String(nextId++).padStart(3, '0');
   }
 
+  function updateCardImagePreview(dataUrl) {
+    const preview = $('card-image-preview');
+    const clearBtn = $('btn-card-image-clear');
+    if (!preview) return;
+    if (dataUrl && String(dataUrl).startsWith('data:image')) {
+      preview.innerHTML = `<img src="${dataUrl}" alt="Prévia">`;
+      preview.classList.add('has-image');
+      if (clearBtn) clearBtn.disabled = false;
+    } else {
+      preview.innerHTML = '<span class="card-image-placeholder">Sem imagem</span>';
+      preview.classList.remove('has-image');
+      if (clearBtn) clearBtn.disabled = true;
+    }
+  }
+
+  function compressImageFile(file, maxSize = 256, quality = 0.82) {
+    return new Promise((resolve, reject) => {
+      if (!file || !file.type.startsWith('image/')) {
+        reject(new Error('Selecione um arquivo de imagem.'));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Falha ao ler a imagem.'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('Imagem inválida.'));
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvasEl = document.createElement('canvas');
+          canvasEl.width = w;
+          canvasEl.height = h;
+          const ctx = canvasEl.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvasEl.toDataURL('image/jpeg', quality));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   function openCardModal(node) {
     editingNodeId = node ? node.id : null;
+    editingImageData = node ? (node.image || null) : null;
     const modal = $('card-modal');
     const isEdit = !!node;
-    $('card-modal-title').textContent = isEdit ? 'Editar card' : 'Novo card';
+    $('card-modal-title').textContent = isEdit ? 'Editar entidade' : 'Nova entidade';
     $('card-title').value = node?.title || '';
     $('card-type-label').value = node?.typeLabel || 'Person';
     $('card-prop-key').value = node?.props?.[0]?.[0] || 'Descrição';
     $('card-prop-val').value = node?.props?.[0]?.[1] || '';
     $('card-color').value = node?.color || TYPE_COLORS.Person;
+    $('card-format').value = node?.format === 'circle' ? 'circle' : 'card';
+    const imgInput = $('card-image-input');
+    if (imgInput) imgInput.value = '';
+    updateCardImagePreview(editingImageData);
     setupIconPicker(node?.iconType || 'Person');
     show(modal);
   }
@@ -646,26 +919,34 @@
     const typeLabel = $('card-type-label').value.trim() || 'Anon';
     const iconType = getSelectedIcon();
     const color = $('card-color').value;
+    const format = $('card-format').value === 'circle' ? 'circle' : 'card';
     const propKey = $('card-prop-key').value.trim() || 'Info';
     const propVal = $('card-prop-val').value.trim();
-    const props = propVal ? [[propKey, propVal]] : [];
+    const image = editingImageData || null;
 
     if (editingNodeId) {
       const n = getNode(editingNodeId);
       if (n) {
-        Object.assign(n, { title, typeLabel, iconType, color, props });
-        refreshNodeEl(n);
+        const props = propVal
+          ? [[propKey, propVal], ...(n.props || []).filter((_, i) => i > 0)]
+          : (n.props || []);
+        Object.assign(n, { title, typeLabel, iconType, color, format, props });
+        if (image) n.image = image;
+        else delete n.image;
+        remountNodeEl(n);
       }
     } else {
       const rect = canvas().getBoundingClientRect();
       const cx = (rect.width / 2 - tx) / scale;
       const cy = (rect.height / 2 - ty) / scale;
+      const props = propVal ? [[propKey, propVal]] : [];
       const n = {
         id: newCustomId(),
-        title, typeLabel, iconType, color, props,
+        title, typeLabel, iconType, color, format, props,
         x: cx - NODE_W / 2, y: cy - NODE_H / 2,
         pinned: false,
       };
+      if (image) n.image = image;
       nodes.push(n);
       buildNodeEl(n);
       selectOne(n);
@@ -674,6 +955,7 @@
     }
     hide($('card-modal'));
     editingNodeId = null;
+    editingImageData = null;
   }
 
   function openEdgeModal(idx, sourceId, targetId) {
@@ -687,17 +969,23 @@
     tgtSel.innerHTML = nodes.map(n => `<option value="${n.id}">${esc(n.title)}</option>`).join('');
 
     if (idx != null) {
-      const e = edges[idx];
+      const e = normalizeEdge(edges[idx]);
       srcSel.value = e.s;
       tgtSel.value = e.t;
       $('edge-label').value = e.label || '';
       $('edge-desc').value = e.description || '';
+      $('edge-line-style').value = e.lineStyle;
+      $('edge-color').value = e.color || '#64748b';
+      $('edge-width').value = String(e.width);
     } else {
       const sel = [...selectedIds];
       srcSel.value = sourceId || sel[0] || nodes[0]?.id || '';
       tgtSel.value = targetId || sel[1] || nodes[1]?.id || '';
       $('edge-label').value = '';
       $('edge-desc').value = '';
+      $('edge-line-style').value = 'solid';
+      $('edge-color').value = '#64748b';
+      $('edge-width').value = '1.6';
     }
     show(modal);
   }
@@ -709,10 +997,20 @@
     const description = $('edge-desc').value.trim();
     if (!s || !t || s === t) return;
 
+    const edge = normalizeEdge({
+      s,
+      t,
+      label,
+      description,
+      lineStyle: $('edge-line-style').value,
+      color: $('edge-color').value,
+      width: $('edge-width').value,
+    });
+
     if (editingEdgeIdx != null) {
-      edges[editingEdgeIdx] = { s, t, label, description };
+      edges[editingEdgeIdx] = edge;
     } else {
-      edges.push({ s, t, label, description });
+      edges.push(edge);
     }
     remountEdges();
     updateCounts();
@@ -728,6 +1026,7 @@
     const menu = ctxMenu();
     menu.innerHTML = `
       <button type="button" data-act="extremidades">Selecionar extremidades</button>
+      <button type="button" data-act="mesmo-rotulo">Selecionar mesmo Rótulo</button>
       <button type="button" data-act="editar">Editar card</button>
       <button type="button" data-act="ligar">Ligar a outro card</button>
       <div class="sep"></div>
@@ -752,6 +1051,8 @@
   function bindEvents() {
     $('btn-close-graph').addEventListener('click', () => {
       hide($('graph-view'));
+      const results = $('results');
+      if (results && graphFilename) show(results);
     });
 
     $('btn-add-card').addEventListener('click', () => openCardModal(null));
@@ -773,6 +1074,25 @@
       ev.preventDefault();
       saveCardFromModal();
     });
+    $('btn-card-image')?.addEventListener('click', () => $('card-image-input')?.click());
+    $('btn-card-image-clear')?.addEventListener('click', () => {
+      editingImageData = null;
+      const imgInput = $('card-image-input');
+      if (imgInput) imgInput.value = '';
+      updateCardImagePreview(null);
+    });
+    $('card-image-input')?.addEventListener('change', async () => {
+      const file = $('card-image-input').files?.[0];
+      if (!file) return;
+      try {
+        editingImageData = await compressImageFile(file);
+        updateCardImagePreview(editingImageData);
+        showToast('Imagem carregada');
+      } catch (err) {
+        setHint(err.message || 'Erro ao carregar imagem');
+      }
+      $('card-image-input').value = '';
+    });
     $('edge-form').addEventListener('submit', ev => {
       ev.preventDefault();
       saveEdgeFromModal();
@@ -792,6 +1112,7 @@
       const n = ctxTarget;
       closeCtxMenu();
       if (act === 'extremidades') selectExtremities(n);
+      else if (act === 'mesmo-rotulo') selectSameLabel(n);
       else if (act === 'editar') openCardModal(n);
       else if (act === 'ligar') {
         linkSourceId = n.id;
@@ -990,10 +1311,64 @@
     open(data, filename) {
       graphFilename = filename || '';
       show($('graph-view'));
-      loadFromAnalysis(data);
+      // Aguarda o layout do shell (painel central) antes de enquadrar
+      requestAnimationFrame(() => loadFromAnalysis(data));
     },
     close() {
       hide($('graph-view'));
+    },
+    importJson(file) {
+      if (!file) return Promise.reject(new Error('Arquivo inválido'));
+      show($('graph-view'));
+      return importGraphJson(file);
+    },
+    getState() {
+      return exportPayload();
+    },
+    getNode(id) {
+      const n = getNode(id);
+      return n ? serializeNode(n) : null;
+    },
+    addNodeProp(id, key, value) {
+      const n = getNode(id);
+      if (!n) return false;
+      const k = String(key || '').trim();
+      const v = String(value ?? '').trim();
+      if (!k || !v) return false;
+      if (!Array.isArray(n.props)) n.props = [];
+      const idx = n.props.findIndex(p => String(p[0]).toLowerCase() === k.toLowerCase());
+      if (idx >= 0) n.props[idx] = [k, v];
+      else n.props.push([k, v]);
+      refreshNodeEl(n);
+      return true;
+    },
+    removeNodeProp(id, key) {
+      const n = getNode(id);
+      if (!n || !Array.isArray(n.props)) return false;
+      const before = n.props.length;
+      n.props = n.props.filter(p => String(p[0]).toLowerCase() !== String(key).toLowerCase());
+      if (n.props.length === before) return false;
+      refreshNodeEl(n);
+      return true;
+    },
+    setNodeFormat(id, format) {
+      const n = getNode(id);
+      if (!n) return false;
+      const next = format === 'circle' ? 'circle' : 'card';
+      if ((n.format || 'card') === next) return true;
+      n.format = next;
+      remountNodeEl(n);
+      return true;
+    },
+    getNetworkAnalysis() {
+      return networkAnalysis;
+    },
+    setNetworkAnalysisResult(metricId, payload) {
+      if (!networkAnalysis || typeof networkAnalysis !== 'object') networkAnalysis = { results: {} };
+      if (!networkAnalysis.results) networkAnalysis.results = {};
+      networkAnalysis.results[metricId] = payload;
+      networkAnalysis.updatedAt = new Date().toISOString();
+      return networkAnalysis;
     },
   };
 

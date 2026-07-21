@@ -6,45 +6,352 @@
   <title>PDF2Chart — Análise de Vínculos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/canvas.css') }}">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('PDF2Chart-theme');
+        document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 <body>
-  <div id="app">
-    <!-- Drop zone (tela inteira) -->
-    <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Arraste um PDF ou clique para selecionar">
-      <input type="file" id="file-input" accept=".pdf,application/pdf" hidden>
+  <div id="app" class="app-shell">
+    <!-- Top navigation -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.8"/>
+            <circle cx="16" cy="8" r="2.5" stroke="currentColor" stroke-width="1.8"/>
+            <circle cx="12" cy="16" r="2.5" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M10 9.2 14 9.2M9.2 10.2 11 14.2M14.8 10.2 13 14.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="brand-name">PDF2Chart</span>
+      </div>
 
-      <div class="corner-actions">
-        <button id="btn-help" class="corner-btn" type="button" aria-label="Ajuda" title="Ajuda">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/>
-            <path d="M9.5 9.5a2.5 2.5 0 1 1 4.2 1.8c-.8.6-1.2 1.2-1.2 2.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      <label class="topbar-search" for="global-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <input id="global-search" type="search" placeholder="Buscar entidades, documentos…" autocomplete="off">
+        <kbd>Ctrl K</kbd>
+      </label>
+
+      <div class="topbar-actions">
+        <button type="button" class="btn btn-ai" id="btn-ai" title="Assistente de IA">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+            <circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.7"/>
+          </svg>
+          IA Assistente
+        </button>
+        <button id="btn-help" class="icon-btn" type="button" aria-label="Ajuda" title="Ajuda">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M9.5 9.5a2.5 2.5 0 1 1 4.2 1.8c-.8.6-1.2 1.2-1.2 2.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
             <circle cx="12" cy="17" r="1" fill="currentColor"/>
           </svg>
         </button>
-        <button id="btn-settings" class="corner-btn" type="button" aria-label="Configurações" title="Configurações">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <button id="btn-theme" class="icon-btn" type="button" aria-label="Alternar tema claro/escuro" title="Tema claro/escuro">
+          <svg class="theme-icon theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+          <svg class="theme-icon theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M19 13.5A7.5 7.5 0 1 1 10.5 5a6 6 0 0 0 8.5 8.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
           </svg>
         </button>
-      </div>
-
-      <div class="dropzone-content">
-        <div class="dropzone-icon" aria-hidden="true">
-          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-            <circle cx="32" cy="32" r="32" fill="#E8F0FE"/>
-            <path d="M32 20v16M24 28l8-8 8 8" stroke="#1A73E8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M22 40h20" stroke="#1A73E8" stroke-width="2.5" stroke-linecap="round"/>
-          </svg>
+        <div class="user-chip" title="Usuário">
+          <span class="user-avatar" aria-hidden="true">CR</span>
         </div>
-        <h1>PDF2Chart</h1>
-        <p class="subtitle">Arraste um PDF aqui ou clique para selecionar</p>
-        <p class="hint">Extração de texto · IA Groq · Gráfico de vínculos Alias ANX</p>
       </div>
+    </header>
+
+    <div class="shell-body">
+      <!-- Icon rail -->
+      <nav class="rail" aria-label="Navegação principal">
+        <button type="button" class="rail-btn" id="rail-toggle-left" title="Exibir/ocultar painel de fontes" aria-label="Exibir ou ocultar painel esquerdo" aria-pressed="true">
+          <svg class="icon-panel-open" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M9 4v16" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M6 9h0.01M6 12h0.01M6 15h0.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button type="button" class="rail-btn rail-btn-label" id="rail-open-json" title="Abrir JSON do mapa" aria-label="Abrir JSON">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5v-9Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+            <path d="M12 16V10M9.5 12.5 12 10l2.5 2.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span>Abrir</span>
+        </button>
+        <input type="file" id="inp-open-json" accept=".json,application/json" hidden>
+        <button type="button" class="rail-btn active" data-rail="analysis" title="Análise" aria-label="Análise">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="7" cy="8" r="2.2" stroke="currentColor" stroke-width="1.7"/><circle cx="17" cy="7" r="2.2" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="17" r="2.2" stroke="currentColor" stroke-width="1.7"/><path d="M9 9.2 15.2 8.2M8.4 10 10.8 15.2M15.6 9.2 13.2 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" class="rail-btn" data-rail="sources" title="Fontes" aria-label="Fontes" id="rail-upload">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" stroke="currentColor" stroke-width="1.7"/><path d="M14 3v5h5M12 17v-6M9.5 13.5 12 11l2.5 2.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="rail-btn" data-rail="entities" title="Entidades" aria-label="Entidades">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 19c1.4-3 4-4.5 6.5-4.5S17.1 16 18.5 19" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" class="rail-btn" data-rail="alerts" title="Alertas" aria-label="Alertas">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 4a6 6 0 0 1 6 6c0 4 1.5 5.5 1.5 5.5H4.5S6 14 6 10a6 6 0 0 1 6-6Z" stroke="currentColor" stroke-width="1.7"/><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
+        <div class="rail-spacer"></div>
+        <button type="button" class="rail-btn" id="btn-settings" title="Configurações" aria-label="Configurações">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="1.7"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </nav>
+
+      <!-- Left contextual panel -->
+      <aside class="panel-left" aria-label="Painel de fontes e entidades">
+        <div class="panel-section">
+          <div class="section-head">
+            <h2>Fontes de Dados</h2>
+            <button type="button" class="link-btn" id="btn-add-source">+ PDF</button>
+          </div>
+          <div id="sources-list" class="sources-list">
+            <p class="empty-hint">Nenhuma fonte carregada. Arraste um PDF ou clique em + PDF.</p>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-head">
+            <h2>Extração com IA</h2>
+          </div>
+          <div class="ai-card" id="ai-extraction-card">
+            <div class="ai-card-top">
+              <span class="ai-status" id="ai-status">Aguardando documento</span>
+              <span class="ai-pct" id="ai-pct">—</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" id="ai-progress" style="width:0%"></div></div>
+            <div class="ai-stats">
+              <div><strong id="stat-entities">0</strong><span>Entidades</span></div>
+              <div><strong id="stat-relationships">0</strong><span>Vínculos</span></div>
+              <div><strong id="stat-chars">0</strong><span>Chars</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section grow">
+          <div class="section-head">
+            <h2>Tipos de Entidades</h2>
+          </div>
+          <div id="entity-types-list" class="entity-types">
+            <p class="empty-hint">Os tipos aparecerão após a análise.</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main workspace -->
+      <main class="workspace">
+        <div class="workspace-subbar">
+          <div class="project-tab">
+            <span class="project-dot"></span>
+            <span id="project-name">Meu Projeto</span>
+          </div>
+          <nav class="view-tabs" aria-label="Visões">
+            <button type="button" class="view-tab active" data-view="graph">Análise de Vínculos</button>
+            <button type="button" class="view-tab" data-view="list" disabled title="Em breve">Mapa</button>
+            <button type="button" class="view-tab" data-view="timeline" disabled title="Em breve">Linhas do Tempo</button>
+            <button type="button" class="view-tab" data-view="reports" disabled title="Em breve">Relatórios</button>
+          </nav>
+          <div class="subbar-actions">
+            <a id="btn-download" class="btn btn-secondary hidden" href="#" download>Download .ANX</a>
+            <button id="btn-new" class="btn btn-ghost hidden" type="button">Novo PDF</button>
+            <button id="btn-share" class="btn btn-secondary" type="button">Compartilhar</button>
+          </div>
+        </div>
+
+        <div class="workspace-body">
+          <!-- Drop zone / empty state -->
+          <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Arraste um PDF ou clique para selecionar">
+            <input type="file" id="file-input" accept=".pdf,application/pdf" hidden>
+            <div class="dropzone-content">
+              <div class="dropzone-icon" aria-hidden="true">
+                <svg width="56" height="56" viewBox="0 0 64 64" fill="none">
+                  <circle cx="32" cy="32" r="32" fill="rgba(59,130,246,0.12)"/>
+                  <path d="M32 20v16M24 28l8-8 8 8" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M22 40h20" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <h1>PDF2Chart</h1>
+              <p class="subtitle">Arraste um PDF aqui ou clique para selecionar</p>
+              <p class="hint">Extração de texto · IA Groq · Gráfico de vínculos Alias ANX</p>
+            </div>
+          </div>
+
+          <!-- Results lists (secondary view, hidden by default after graph opens) -->
+          <div id="results" class="results hidden">
+            <div class="results-panels">
+              <section class="panel-card">
+                <h2>Entidades</h2>
+                <div id="entities-list" class="entity-list"></div>
+              </section>
+              <section class="panel-card">
+                <h2>Vínculos</h2>
+                <div id="relationships-list" class="relationship-list"></div>
+              </section>
+            </div>
+            <div class="results-footer">
+              <button id="btn-view-graph" class="btn btn-primary" type="button">Abrir gráfico de vínculos</button>
+            </div>
+          </div>
+
+          <!-- Canvas de vínculos (embedded in workspace) -->
+          <div id="graph-view" class="graph-view hidden">
+            <header class="graph-topbar">
+              <div class="graph-brand">
+                <h2>Gráfico de Vínculos</h2>
+                <p id="graph-filename">—</p>
+              </div>
+              <div class="graph-status">
+                <span id="graph-node-count">0 entidades</span>
+                <span id="graph-edge-count">0 vínculos</span>
+              </div>
+              <div class="graph-toolbar">
+                <button id="btn-add-card" class="btn btn-secondary" type="button">+ Card</button>
+                <button id="btn-link-cards" class="btn btn-secondary" type="button" disabled>Ligar cards</button>
+                <button id="btn-save-graph" class="btn btn-secondary" type="button">Salvar</button>
+                <button id="btn-import-graph" class="btn btn-secondary" type="button">Importar</button>
+                <button id="btn-copy-md" class="btn btn-secondary" type="button">Copiar md</button>
+                <input type="file" id="inp-import-graph" accept=".json,application/json" hidden>
+                <button id="btn-close-graph" class="btn btn-ghost" type="button">Lista</button>
+              </div>
+            </header>
+            <div class="graph-hint" id="graph-hint">Shift+clique seleção múltipla · Del apaga · Pin fixa card · Ctrl+arraste seleciona área</div>
+            <div class="graph-stage">
+              <div class="graph-canvas" id="graph-canvas">
+                <div class="graph-world" id="graph-world">
+                  <svg class="graph-edges" id="graph-edges"></svg>
+                </div>
+              </div>
+            </div>
+            <div class="graph-controls">
+              <button id="graph-zoom-in" type="button" title="Zoom +">+</button>
+              <button id="graph-zoom-out" type="button" title="Zoom −">−</button>
+              <button id="graph-zoom-fit" type="button" title="Centralizar">⤢</button>
+              <div class="graph-zoomlbl" id="graph-zoomlbl">100%</div>
+            </div>
+            <div class="graph-ctx" id="graph-ctx" role="menu"></div>
+            <div id="graph-selection-box" class="graph-selection-box"></div>
+            <div id="graph-toast" class="graph-toast hidden" role="status">Copiado</div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Right detail panel -->
+      <aside class="panel-right" aria-label="Detalhes da entidade" id="entity-detail">
+        <div class="detail-empty" id="detail-empty">
+          <p>Selecione uma entidade para ver os detalhes.</p>
+        </div>
+        <div class="detail-content hidden" id="detail-content">
+          <div class="detail-hero">
+            <div class="detail-avatar" id="detail-avatar" aria-hidden="true">?</div>
+            <div class="detail-hero-text">
+              <h2 id="detail-name">—</h2>
+              <p id="detail-type">—</p>
+            </div>
+            <span class="risk-badge" id="detail-risk">Analisado</span>
+          </div>
+          <div class="detail-tabs" role="tablist">
+            <button type="button" class="detail-tab active" data-tab="resumo" role="tab" aria-selected="true">Resumo</button>
+            <button type="button" class="detail-tab" data-tab="vinculos" role="tab" aria-selected="false">Vínculos</button>
+            <button type="button" class="detail-tab" data-tab="rede" role="tab" aria-selected="false">Rede</button>
+          </div>
+          <div class="detail-body">
+            <div class="detail-pane" id="pane-resumo" data-pane="resumo">
+              <section class="detail-block">
+                <h3>Informações</h3>
+                <dl class="detail-dl" id="detail-info"></dl>
+                <div class="form-group detail-format-group">
+                  <label for="detail-format">Formato</label>
+                  <select id="detail-format">
+                    <option value="card">Card</option>
+                    <option value="circle">Círculo</option>
+                  </select>
+                </div>
+              </section>
+              <section class="detail-block">
+                <div class="section-head">
+                  <h3>Atributos</h3>
+                </div>
+                <div id="detail-attrs" class="detail-attrs"></div>
+                <form id="attr-form" class="attr-form hidden">
+                  <div class="attr-form-row">
+                    <input type="text" id="attr-key" placeholder="Atributo" required autocomplete="off">
+                    <input type="text" id="attr-value" placeholder="Valor" required autocomplete="off">
+                  </div>
+                  <div class="attr-form-actions">
+                    <button type="button" class="btn btn-ghost" id="btn-cancel-attr">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                  </div>
+                </form>
+                <button type="button" class="btn btn-secondary btn-block" id="btn-add-attr">Adicionar atributo</button>
+              </section>
+              <section class="detail-block">
+                <h3>Observações</h3>
+                <p class="detail-notes" id="detail-notes">—</p>
+              </section>
+              <section class="detail-block">
+                <h3>Classificação</h3>
+                <div class="confidence">
+                  <div class="confidence-row">
+                    <span>Confiança</span>
+                    <span id="detail-confidence">85%</span>
+                  </div>
+                  <div class="progress-track"><div class="progress-fill" id="detail-confidence-bar" style="width:85%"></div></div>
+                </div>
+              </section>
+            </div>
+            <div class="detail-pane hidden" id="pane-vinculos" data-pane="vinculos">
+              <section class="detail-block">
+                <h3>Entidades conectadas</h3>
+                <div id="detail-links" class="detail-links"></div>
+              </section>
+            </div>
+            <div class="detail-pane hidden" id="pane-rede" data-pane="rede">
+              <section class="detail-block">
+                <h3>Análise de Rede</h3>
+                <p class="empty-hint rede-intro">Calcule centralidades, comunidades e métricas avançadas. Os resultados ficam em <code>networkAnalysis</code> no JSON ao <strong>Salvar</strong> o gráfico. Análise temporal e redes multicamada exigem dados extras (datas/camadas) ainda não presentes nas fontes atuais.</p>
+                <div id="rede-buttons" class="rede-buttons"></div>
+              </section>
+              <section class="detail-block">
+                <h3>Resultado</h3>
+                <div id="rede-result" class="rede-result">
+                  <p class="empty-hint">Escolha uma métrica acima para calcular.</p>
+                </div>
+              </section>
+            </div>
+          </div>
+          <div class="detail-footer">
+            <a id="btn-report" class="btn btn-primary btn-block" href="#" download>Gerar Relatório (.ANX)</a>
+          </div>
+        </div>
+      </aside>
     </div>
+
+    <!-- Status bar -->
+    <footer class="statusbar">
+      <span id="status-project">Projeto: —</span>
+      <span class="status-sep">·</span>
+      <span id="status-counts">0 entidades · 0 vínculos</span>
+      <span class="status-sep">·</span>
+      <span class="status-sync" id="status-sync">Pronto</span>
+      <span class="status-spacer"></span>
+      <span id="filename" class="filename">Nenhum arquivo</span>
+    </footer>
 
     <!-- Overlay de processamento -->
     <div id="processing" class="overlay hidden" aria-live="polite">
@@ -52,47 +359,6 @@
         <div class="spinner" aria-hidden="true"></div>
         <h2 id="processing-title">Processando PDF...</h2>
         <p id="processing-step">Extraindo texto do documento</p>
-      </div>
-    </div>
-
-    <!-- Resultados -->
-    <div id="results" class="results hidden">
-      <header class="results-header">
-        <div class="results-title">
-          <h1>Análise concluída</h1>
-          <p id="filename" class="filename"></p>
-        </div>
-        <div class="results-actions">
-          <button id="btn-new" class="btn btn-secondary" type="button">Novo PDF</button>
-          <button id="btn-view-graph" class="btn btn-secondary" type="button">Ver gráfico</button>
-          <a id="btn-download" class="btn btn-primary" href="#" download>Download .ANX</a>
-        </div>
-      </header>
-
-      <div class="stats">
-        <div class="stat-card">
-          <span class="stat-value" id="stat-entities">0</span>
-          <span class="stat-label">Entidades</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-value" id="stat-relationships">0</span>
-          <span class="stat-label">Vínculos</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-value" id="stat-chars">0</span>
-          <span class="stat-label">Caracteres extraídos</span>
-        </div>
-      </div>
-
-      <div class="panels">
-        <section class="panel">
-          <h2>Entidades</h2>
-          <div id="entities-list" class="entity-list"></div>
-        </section>
-        <section class="panel">
-          <h2>Vínculos</h2>
-          <div id="relationships-list" class="relationship-list"></div>
-        </section>
       </div>
     </div>
 
@@ -112,11 +378,10 @@
           <section>
             <h3>Como usar</h3>
             <ol>
-              <li>Configure sua API Key Groq no ícone de <strong>engrenagem</strong> (canto inferior direito).</li>
-              <li>Arraste um PDF para a tela ou clique para selecionar o arquivo.</li>
+              <li>Configure sua API Key Groq no ícone de <strong>engrenagem</strong>.</li>
+              <li>Arraste um PDF para a área central ou use <strong>+ PDF</strong>.</li>
               <li>Aguarde a extração do texto e a análise pela IA.</li>
-              <li>Revise entidades e vínculos na tela de resultados.</li>
-              <li>Use <strong>Ver gráfico</strong> para explorar o mapa interativo de vínculos.</li>
+              <li>Explore o mapa interativo de vínculos no centro.</li>
               <li>Baixe o arquivo <strong>.ANX</strong> para importar no i2 Analyst's Notebook.</li>
             </ol>
           </section>
@@ -167,44 +432,6 @@
       </div>
     </div>
 
-    <!-- Canvas de vínculos -->
-    <div id="graph-view" class="graph-view hidden">
-      <header class="graph-topbar">
-        <div class="graph-brand">
-          <h2>PDF2Chart · Gráfico de Vínculos</h2>
-          <p id="graph-filename">—</p>
-        </div>
-        <div class="graph-status">
-          <span id="graph-node-count">0 entidades</span>
-          <span id="graph-edge-count">0 vínculos</span>
-        </div>
-        <div class="graph-toolbar">
-          <button id="btn-add-card" class="btn btn-secondary" type="button">+ Card</button>
-          <button id="btn-link-cards" class="btn btn-secondary" type="button" disabled>Ligar cards</button>
-          <button id="btn-save-graph" class="btn btn-secondary" type="button">Salvar</button>
-          <button id="btn-import-graph" class="btn btn-secondary" type="button">Importar</button>
-          <button id="btn-copy-md" class="btn btn-secondary" type="button">Copiar md</button>
-          <input type="file" id="inp-import-graph" accept=".json,application/json" hidden>
-          <button id="btn-close-graph" class="btn btn-primary" type="button">Voltar</button>
-        </div>
-      </header>
-      <div class="graph-hint" id="graph-hint">Shift+clique seleção múltipla · Del apaga · Pin fixa card · Ctrl+arraste seleciona área</div>
-      <div class="graph-canvas" id="graph-canvas">
-        <div class="graph-world" id="graph-world">
-          <svg class="graph-edges" id="graph-edges"></svg>
-        </div>
-      </div>
-      <div class="graph-controls">
-        <button id="graph-zoom-in" type="button" title="Zoom +">+</button>
-        <button id="graph-zoom-out" type="button" title="Zoom −">−</button>
-        <button id="graph-zoom-fit" type="button" title="Centralizar">⤢</button>
-        <div class="graph-zoomlbl" id="graph-zoomlbl">100%</div>
-      </div>
-      <div class="graph-ctx" id="graph-ctx" role="menu"></div>
-      <div id="graph-selection-box" class="graph-selection-box"></div>
-      <div id="graph-toast" class="graph-toast hidden" role="status">Copiado</div>
-    </div>
-
     <!-- Modal: Card -->
     <div id="card-modal" class="modal hidden" role="dialog" aria-modal="true">
       <div class="modal-backdrop" data-close-card-modal></div>
@@ -218,14 +445,21 @@
             <label for="card-title">Título</label>
             <input type="text" id="card-title" required>
           </div>
-          <div class="form-row-2">
+          <div class="form-row-3">
             <div class="form-group">
-              <label for="card-type-label">Tipo (rótulo)</label>
+              <label for="card-type-label">Rótulo</label>
               <input type="text" id="card-type-label" placeholder="Person">
             </div>
             <div class="form-group">
+              <label for="card-format">Formato</label>
+              <select id="card-format">
+                <option value="card">Card</option>
+                <option value="circle">Círculo</option>
+              </select>
+            </div>
+            <div class="form-group">
               <label for="card-color">Cor</label>
-              <input type="color" id="card-color" value="#1a73e8">
+              <input type="color" id="card-color" value="#3b82f6">
             </div>
           </div>
           <div class="form-row-2">
@@ -236,6 +470,20 @@
             <div class="form-group">
               <label for="card-prop-val">Valor</label>
               <input type="text" id="card-prop-val">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Imagem</label>
+            <div class="card-image-row">
+              <div class="card-image-preview" id="card-image-preview" aria-hidden="true">
+                <span class="card-image-placeholder">Sem imagem</span>
+              </div>
+              <div class="card-image-actions">
+                <input type="file" id="card-image-input" accept="image/*" hidden>
+                <button type="button" class="btn btn-secondary" id="btn-card-image">Escolher imagem</button>
+                <button type="button" class="btn btn-ghost" id="btn-card-image-clear" disabled>Remover</button>
+                <p class="form-hint">No círculo preenche toda a área; no card substitui o ícone.</p>
+              </div>
             </div>
           </div>
           <div class="form-group">
@@ -277,6 +525,29 @@
             <label for="edge-desc">Descrição (opcional)</label>
             <input type="text" id="edge-desc">
           </div>
+          <div class="form-group">
+            <label for="edge-line-style">Tipo de linha</label>
+            <select id="edge-line-style">
+              <option value="solid">Linha</option>
+              <option value="dashed">Tracejado</option>
+              <option value="dotted">Pontos</option>
+            </select>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="edge-color">Cor da linha</label>
+              <input type="color" id="edge-color" value="#64748b">
+            </div>
+            <div class="form-group">
+              <label for="edge-width">Tamanho da linha</label>
+              <select id="edge-width">
+                <option value="1">Fina (1)</option>
+                <option value="1.6" selected>Normal (1.6)</option>
+                <option value="2.5">Média (2.5)</option>
+                <option value="4">Grossa (4)</option>
+              </select>
+            </div>
+          </div>
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary" data-close-edge-modal>Cancelar</button>
             <button type="submit" class="btn btn-primary">Salvar vínculo</button>
@@ -296,6 +567,7 @@
     </div>
   </div>
 
+  <script src="{{ url_for('static', filename='js/network-metrics.js') }}"></script>
   <script src="{{ url_for('static', filename='js/canvas.js') }}"></script>
   <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
